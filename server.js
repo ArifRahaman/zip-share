@@ -6,7 +6,7 @@ const cors = require('cors');
 const fs = require('fs');
 
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 app.use(cors());
 app.use(express.static('public'));
@@ -48,6 +48,12 @@ app.post('/api/upload', upload.single('file'), (req, res) => {
     });
 });
 
+app.use((err, req, res, next) => {
+    console.error('Error handling upload:', err);
+    res.status(500).send('Server Error: ' + err.message);
+});
+
+
 app.get('/download/:id', (req, res) => {
     const fileId = req.params.id;
     
@@ -69,7 +75,7 @@ app.get('/download/:id', (req, res) => {
     });
 });
 
-app.listen(port, '0.0.0.0', () => {
+const server = app.listen(port, '0.0.0.0', () => {
     console.log(`\n=========================================`);
     console.log(`Server is running!`);
     console.log(`Local link: http://localhost:${port}`);
@@ -85,3 +91,7 @@ app.listen(port, '0.0.0.0', () => {
     }
     console.log(`=========================================\n`);
 });
+
+// Disable timeout for large file uploads
+server.timeout = 0;
+
