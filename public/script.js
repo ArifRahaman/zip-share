@@ -55,6 +55,12 @@ fileInput.addEventListener('change', function() {
 });
 
 function handleFile(file) {
+    if (!file.name.toLowerCase().endsWith('.zip')) {
+        alert('Only ZIP files are allowed. Please upload a .zip file.');
+        resetUI();
+        return;
+    }
+
     // Hide dropzone, show progress
     dropZone.style.display = 'none';
     progressContainer.style.display = 'block';
