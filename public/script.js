@@ -72,35 +72,58 @@ function handleFile(file) {
 }
 
 function uploadFile(file) {
-    const xhr = new XMLHttpRequest();
-    const formData = new FormData();
-    formData.append('file', file);
+    const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB chunks
+    const uploadSessionId = Math.random().toString(36).substring(2, 15);
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    let currentChunk = 0;
 
-    xhr.upload.addEventListener('progress', (e) => {
-        if (e.lengthComputable) {
-            const percentComplete = (e.loaded / e.total) * 100;
-            progressBar.style.width = percentComplete + '%';
-            progressText.textContent = Math.round(percentComplete) + '%';
-        }
-    });
+    function uploadNextChunk() {
+        const start = currentChunk * CHUNK_SIZE;
+        const end = Math.min(start + CHUNK_SIZE, file.size);
+        const chunk = file.slice(start, end);
 
-    xhr.addEventListener('load', () => {
-        if (xhr.status >= 200 && xhr.status < 300) {
-            const response = JSON.parse(xhr.responseText);
-            showResult(response.downloadLink);
-        } else {
-            alert('Upload failed: ' + xhr.statusText);
+        const formData = new FormData();
+        formData.append('file', chunk, file.name);
+        formData.append('uploadSessionId', uploadSessionId);
+        formData.append('currentChunk', currentChunk);
+        formData.append('totalChunks', totalChunks);
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload-chunk', true);
+
+        xhr.upload.addEventListener('progress', (e) => {
+            if (e.lengthComputable) {
+                const chunkPercent = (e.loaded / e.total);
+                const overallPercent = ((currentChunk + chunkPercent) / totalChunks) * 100;
+                progressBar.style.width = overallPercent + '%';
+                progressText.textContent = Math.round(overallPercent) + '%';
+            }
+        });
+
+        xhr.addEventListener('load', () => {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                currentChunk++;
+                if (currentChunk < totalChunks) {
+                    uploadNextChunk();
+                } else {
+                    const response = JSON.parse(xhr.responseText);
+                    showResult(response.downloadLink);
+                }
+            } else {
+                alert('Upload failed: ' + xhr.responseText);
+                resetUI();
+            }
+        });
+
+        xhr.addEventListener('error', () => {
+            alert('An error occurred during the chunk upload.');
             resetUI();
-        }
-    });
+        });
 
-    xhr.addEventListener('error', () => {
-        alert('An error occurred during the upload.');
-        resetUI();
-    });
+        xhr.send(formData);
+    }
 
-    xhr.open('POST', '/api/upload', true);
-    xhr.send(formData);
+    uploadNextChunk();
 }
 
 function showResult(link) {

@@ -17,21 +17,11 @@ if (!fs.existsSync(uploadsDir)) {
     fs.mkdirSync(uploadsDir);
 }
 
-// Configure multer for disk storage
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null, uploadsDir);
-    },
-    filename: (req, file, cb) => {
-        const fileId = uuidv4();
-        const originalName = file.originalname;
-        // The generated filename has the format: UUID___OriginalName
-        cb(null, `${fileId}___${originalName}`);
-    }
-});
+// Configure multer to store chunks in memory
+const chunkStorage = multer.memoryStorage();
 
-const upload = multer({ 
-    storage: storage,
+const uploadChunk = multer({ 
+    storage: chunkStorage,
     fileFilter: (req, file, cb) => {
         if (file.originalname.toLowerCase().endsWith('.zip')) {
             cb(null, true);
@@ -41,20 +31,36 @@ const upload = multer({
     }
 });
 
-app.post('/api/upload', upload.single('file'), (req, res) => {
+app.post('/api/upload-chunk', uploadChunk.single('file'), (req, res) => {
     if (!req.file) {
-        return res.status(400).send('No file uploaded.');
+        return res.status(400).send('No file chunk uploaded.');
     }
+
+    const { uploadSessionId, currentChunk, totalChunks } = req.body;
+    const fileName = req.file.originalname;
     
-    const fileId = req.file.filename.split('___')[0];
-    const host = req.headers.host;
-    const downloadLink = `http://${host}/download/${fileId}`;
+    // Assemble file sequentially
+    const tempFilePath = path.join(uploadsDir, `${uploadSessionId}_temp.zip`);
+    fs.appendFileSync(tempFilePath, req.file.buffer);
     
-    res.json({
-        message: 'File uploaded successfully',
-        fileId: fileId,
-        downloadLink: downloadLink
-    });
+    if (parseInt(currentChunk) === parseInt(totalChunks) - 1) {
+        const fileId = uuidv4();
+        const finalFilename = `${fileId}___${fileName}`;
+        const finalFilePath = path.join(uploadsDir, finalFilename);
+        
+        fs.renameSync(tempFilePath, finalFilePath);
+        
+        const host = req.headers.host;
+        const downloadLink = `http://${host}/download/${fileId}`;
+        
+        res.json({
+            message: 'File assembled successfully',
+            fileId: fileId,
+            downloadLink: downloadLink
+        });
+    } else {
+        res.json({ message: 'Chunk received' });
+    }
 });
 
 app.use((err, req, res, next) => {
